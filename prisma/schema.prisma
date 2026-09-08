@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(cuid())
+  engineerCode      String   @unique
+  name              String
+  password          String
+  role              String   @default("ENGINEER") // ADMIN, MANAGER, ENGINEER
+  phone             String?
+  status            String   @default("ACTIVE") // ACTIVE, INACTIVE
+  managerId         String?
+  mustChangePassword Boolean  @default(true)
+  // Extended profile fields used in Daily Schedule Report
+  smName            String?  // Senior Manager name (manager's manager)
+  zone              String?  // Territory zone, e.g. West, East, North, South
+  vertical          String?  // Business vertical, e.g. Retail, Enterprise
+  projectManager    String?  // Display name of project manager (fallback if managerId chain is missing)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  manager      User?    @relation("ManagerEngineers", fields: [managerId], references: [id])
+  engineers    User[]   @relation("ManagerEngineers")
+  schedules    Schedule[]
+  visits       Visit[]
+  imports      ImportHistory[]
+  exports      ExportHistory[]
+  activityLogs ActivityLog[]
+  notifications Notification[]
+}
+
+model Schedule {
+  id        String   @id @default(cuid())
+  date      String
+  engineerId String
+  siteId    String?
+  storeId   String?
+  vendor    String?
+  activity  String?
+  status    String   @default("ASSIGNED") // ASSIGNED, PENDING, COMPLETED, HOLD, CANCELLED, RESCHEDULED
+  remarks   String?
+  // Extended fields for Daily Schedule Report (matching reference Excel format)
+  vertical    String?  // Retail, Enterprise, etc.
+  callNumber  String?  // Ticket / call number (e.g. SD63358177)
+  visitType   String?  // Project, Service, Absent
+  problem     String?  // Description of the issue
+  callDate    String?  // When the call/ticket was logged (ISO date string)
+  zone        String?  // Override zone (defaults to engineer.zone when empty)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  engineer  User     @relation(fields: [engineerId], references: [id])
+  site      Site?    @relation(fields: [siteId], references: [id])
+  store     Store?   @relation(fields: [storeId], references: [id])
+  visits    Visit[]
+}
+
+model Site {
+  id             String   @id @default(cuid())
+  siteCode       String   @unique
+  siteName       String
+  address        String?
+  district       String?
+  region         String?
+  vendor         String?
+  latitude       Float?
+  longitude      Float?
+  googleLink     String?
+  lastUpdatedBy  String?
+  lastUpdatedAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  schedules Schedule[]
+}
+
+model Store {
+  id           String   @id @default(cuid())
+  storeCode    String   @unique
+  storeName    String
+  storeFormat  String?
+  address      String?
+  district     String?
+  region       String?
+  latitude     Float?
+  longitude    Float?
+  googleLink   String?
+  contactNumber String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  schedules Schedule[]
+}
+
+model Visit {
+  id           String   @id @default(cuid())
+  scheduleId   String
+  engineerId   String
+  visitNumber  Int      @default(1)
+  checkInTime  DateTime @default(now())
+  checkOutTime DateTime?
+  status       String   @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, CANCELLED
+  remarks      String?
+  gps          String?
+  photos       String   @default("[]") // JSON array of photo URLs
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  engineer User     @relation(fields: [engineerId], references: [id])
+}
+
+model ImportHistory {
+  id           String   @id @default(cuid())
+  fileName     String
+  uploadedBy   String
+  totalRows    Int      @default(0)
+  successCount Int      @default(0)
+  failedCount  Int      @default(0)
+  report       String   @default("[]") // JSON array of failed rows
+  createdAt    DateTime @default(now())
+
+  uploader User @relation(fields: [uploadedBy], references: [id])
+}
+
+model ExportHistory {
+  id         String   @id @default(cuid())
+  exportedBy String
+  format     String   // XLSX, CSV, PDF
+  filters    String   @default("{}") // JSON
+  recordCount Int     @default(0)
+  createdAt  DateTime @default(now())
+
+  exporter User @relation(fields: [exportedBy], references: [id])
+}
+
+model ActivityLog {
+  id            String   @id @default(cuid())
+  userId        String
+  role          String
+  action        String
+  entity        String?
+  entityId      String?
+  ipAddress     String?
+  device        String?
+  previousValue String?
+  newValue      String?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
