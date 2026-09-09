@@ -57,8 +57,7 @@ export function LoginPage() {
             <form onSubmit={handleSubmit} className='space-y-4'>
               <div className='space-y-2'>
                 <Label htmlFor='code'>Engineer Code</Label>
-                <Input id='code' placeholder='e.g.PPRR01167804
-,ADM001' value={code} onChange={e => setCode(e.target.value)} autoComplete='username' className='h-11' />
+                <Input id='code' placeholder='e.g.PPRR01167804' value={code} onChange={e => setCode(e.target.value)} autoComplete='username' className='h-11' />
               </div>
               <div className='space-y-2'>
                 <Label htmlFor='password'>Password</Label>
@@ -75,8 +74,8 @@ export function LoginPage() {
               </Button>
             </form>
             <div className='mt-6 pt-4 border-t border-border'>
-             <center> <p className='text-xs text-muted-foreground mb-2 font-medium'>Made With ❤️ For SLP Engineers.</p>
-              <p className='text-xs text-muted-foreground mb-2 font-medium'>Design By Dhananjay & Deepak.</p> </center>
+             <center> <p className='text-xs text-muted-foreground mb-2 font-medium'>Made With ❤️ For SLP Engineers</p>
+              <p className='text-xs text-muted-foreground mb-2 font-medium'>Design By Dhananjay & Deepak</p> </center>
             </div>
           </CardContent>
         </Card>
