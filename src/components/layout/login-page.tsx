@@ -57,7 +57,8 @@ export function LoginPage() {
             <form onSubmit={handleSubmit} className='space-y-4'>
               <div className='space-y-2'>
                 <Label htmlFor='code'>Engineer Code</Label>
-                <Input id='code' placeholder='e.g. ADM001, FE1001' value={code} onChange={e => setCode(e.target.value)} autoComplete='username' className='h-11' />
+                <Input id='code' placeholder='e.g.PPRR01167804
+,ADM001' value={code} onChange={e => setCode(e.target.value)} autoComplete='username' className='h-11' />
               </div>
               <div className='space-y-2'>
                 <Label htmlFor='password'>Password</Label>
