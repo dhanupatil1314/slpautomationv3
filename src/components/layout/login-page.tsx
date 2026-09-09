@@ -75,8 +75,8 @@ export function LoginPage() {
               </Button>
             </form>
             <div className='mt-6 pt-4 border-t border-border'>
-              <p className='text-xs text-muted-foreground mb-2 font-medium'>Made With ❤️ For SLP Engineers.</p>
-              <p className='text-xs text-muted-foreground mb-2 font-medium'>Design By Dhananjay & Deepak.</p>
+             <center> <p className='text-xs text-muted-foreground mb-2 font-medium'>Made With ❤️ For SLP Engineers.</p>
+              <p className='text-xs text-muted-foreground mb-2 font-medium'>Design By Dhananjay & Deepak.</p> </center>
             </div>
           </CardContent>
         </Card>
