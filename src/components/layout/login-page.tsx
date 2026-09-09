@@ -74,18 +74,8 @@ export function LoginPage() {
               </Button>
             </form>
             <div className='mt-6 pt-4 border-t border-border'>
-              <p className='text-xs text-muted-foreground mb-2 font-medium'>Demo Credentials:</p>
-              <div className='grid grid-cols-3 gap-2 text-xs'>
-                <button onClick={() => { setCode('ADM001'); setPassword('slp@1234') }} className='p-2 rounded-lg bg-muted/50 hover:bg-muted transition text-left cursor-pointer'>
-                  <p className='font-medium text-foreground'>Admin</p><p className='text-muted-foreground'>ADM001</p>
-                </button>
-                <button onClick={() => { setCode('MGR001'); setPassword('slp@1234') }} className='p-2 rounded-lg bg-muted/50 hover:bg-muted transition text-left cursor-pointer'>
-                  <p className='font-medium text-foreground'>Manager</p><p className='text-muted-foreground'>MGR001</p>
-                </button>
-                <button onClick={() => { setCode('FE1001'); setPassword('slp@1234') }} className='p-2 rounded-lg bg-muted/50 hover:bg-muted transition text-left cursor-pointer'>
-                  <p className='font-medium text-foreground'>Engineer</p><p className='text-muted-foreground'>FE1001</p>
-                </button>
-              </div>
+              <p className='text-xs text-muted-foreground mb-2 font-medium'>Made With ❤️ For SLP Engineers.</p>
+              <p className='text-xs text-muted-foreground mb-2 font-medium'>Design By Dhananjay & Deepak.</p>
             </div>
           </CardContent>
         </Card>
