@@ -38,7 +38,7 @@ export function VisitsView() {
             ))}
           </tbody>
         </table></div>
-        {!isLoading && !data?.visits?.length && <div className='py-12 text-center text-muted-foreground'>No visits found</div>}
+        {!isLoading && !data?.visits?.length && <div className='py-12 text-center text-muted-foreground'>This Feature Comming Soon!</div>}
       </CardContent></Card>
     </div>
   )
