@@ -1,7 +1,3 @@
-// LakhirAd CMS — Prisma Schema
-// Smart Digital Advertising Network — DOOH platform
-// Database: SQLite (swap datasource provider to postgresql for production scale)
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,872 +7,163 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===================== AUTH & RBAC =====================
-
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  phone           String?
-  name            String
-  passwordHash    String
-  avatarUrl       String?
-  role            String   @default("viewer") // super_admin, ops_admin, ads_manager, finance_admin, service_engineer, advertiser, vehicle_owner, driver, viewer
-  organizationId  String?
-  status          String   @default("active") // active, suspended, invited
-  lastLoginAt     DateTime?
-  lastLoginIp     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime?
-
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  auditLogs       AuditLog[]
-  notifications   Notification[]
-  loginActivities LoginActivity[]
-  deviceCommands  DeviceCommand[]
-
-  @@index([role])
-  @@index([organizationId])
-}
-
-model Role {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  isSystem    Boolean  @default(false)
-  permissions String   // JSON-encoded list of permission strings e.g. ["devices.view","devices.create"]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model LoginActivity {
-  id        String   @id @default(cuid())
-  userId    String
-  ip        String?
-  userAgent String?
-  success   Boolean  @default(true)
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-// ===================== ORGANIZATIONS / ADVERTISERS =====================
-
-model Organization {
-  id            String   @id @default(cuid())
-  name          String
-  type          String   @default("advertiser") // advertiser, owner_operator, vendor
-  gstin         String?
-  pan           String?
-  address       String?
-  city          String?
-  state         String?
-  country       String   @default("India")
-  phone         String?
-  email         String?
-  website       String?
-  status        String   @default("active")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  users         User[]
-  advertisers   Advertiser[]
-  media         Media[]
-  campaigns     Campaign[]
-  invoices      Invoice[]
-}
-
-model Advertiser {
-  id             String   @id @default(cuid())
-  organizationId String
-  contactName    String
-  contactPhone   String
-  contactEmail   String
-  category       String? // restaurant, jewellery, education, real_estate, etc
-  billingAddress String?
-  creditLimit    Float    @default(0)
-  status         String   @default("active")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  campaigns      Campaign[]
-  media          Media[]
-  invoices       Invoice[]
-
-  @@index([organizationId])
-}
-
-// ===================== LOCATION HIERARCHY =====================
-
-model City {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  state     String
-  latitude  Float?
-  longitude Float?
-  status    String   @default("active")
-  zones     Zone[]
-  vehicles  Vehicle[]
-  devices   Device[]
-  createdAt DateTime @default(now())
-}
-
-model Zone {
-  id        String   @id @default(cuid())
-  cityId    String
-  name      String
-  latitude  Float?
-  longitude Float?
-  radiusKm  Float    @default(3)
-  city      City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
-  @@index([cityId])
-}
-
-// ===================== VEHICLES / DRIVERS / OWNERS =====================
-
-model VehicleOwner {
-  id            String   @id @default(cuid())
-  name          String
-  mobile        String
-  email         String?
-  address       String?
-  city          String?
-  bankAccount   String?
-  bankIfsc      String?
-  upiId         String?
-  revenueShare  Float    @default(40) // percentage
-  status        String   @default("active")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  vehicles      Vehicle[]
-  ownerEarnings OwnerEarning[]
-  payouts       Payout[]  @relation("OwnerPayouts")
-
-  @@index([city])
-}
-
-model Driver {
-  id              String   @id @default(cuid())
-  name            String
-  mobile          String   @unique
-  email           String?
-  photoUrl        String?
-  city            String?
-  kycStatus       String   @default("pending") // pending, verified, rejected
-  agreementStatus String   @default("pending") // pending, signed, expired
-  bankAccount     String?
-  bankIfsc        String?
-  upiId           String?
-  driverScore     Float    @default(70)
-  status          String   @default("active")
-  joiningDate     DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  vehicles        Vehicle[]
-  driverEarnings  DriverEarning[]
-  payouts         Payout[] @relation("DriverPayouts")
-  serviceTickets  ServiceTicket[]
-
-  @@index([city])
-  @@index([status])
-}
-
-model Vehicle {
-  id               String   @id @default(cuid())
-  registrationNo   String   @unique
-  vehicleType      String   @default("auto_rickshaw") // auto_rickshaw, taxi, bus, car
-  manufacturer     String?
-  model            String?
-  cityId           String?
-  zone             String?
-  ownerId          String?
-  driverId         String?
-  agreementStatus  String   @default("pending")
-  status           String   @default("pending_installation") // active, pending_installation, maintenance, suspended, inactive
-  installationDate DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  city             City?        @relation(fields: [cityId], references: [id])
-  owner            VehicleOwner? @relation(fields: [ownerId], references: [id])
-  driver           Driver?      @relation(fields: [driverId], references: [id])
-  device           Device?      @relation()
-  screen           Screen?      @relation()
-  playbackEvents   PlaybackEvent[]
-  serviceTickets   ServiceTicket[]
-
-  @@index([cityId])
-  @@index([ownerId])
-  @@index([driverId])
-  @@index([status])
-}
-
-// ===================== SCREENS / DEVICES / SIM =====================
-
-model Screen {
-  id               String   @id @default(cuid())
-  screenId         String   @unique
-  model            String?
-  size             String?  // 15.6", 21.5"
-  resolution       String?  // 1920x1080
-  orientation      String   @default("landscape") // landscape, portrait
-  brightness       Int      @default(80)
-  manufacturer     String?
-  serialNumber     String?
-  warranty         String?
-  installationDate DateTime @default(now())
-  status           String   @default("active")
-  vehicleId        String?  @unique
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  vehicle          Vehicle?        @relation(fields: [vehicleId], references: [id])
-
-  @@index([status])
-}
-
-model Device {
   id                String   @id @default(cuid())
-  deviceId          String   @unique
-  serialNumber      String   @unique
-  imei              String   @unique
-  model             String?
-  playerVersion     String?
-  androidVersion    String?
-  vehicleId         String?  @unique
-  driverId          String?
-  ownerId           String?
-  cityId            String?
-  zone              String?
-  latitude          Float?
-  longitude         Float?
-  status            String   @default("offline") // online, offline, warning, maintenance, suspended, decommissioned
-  networkType       String?  // 4G, 3G, WiFi
-  signalStrength    Int?
-  ipAddress         String?
-  temperature       Float?
-  storageUsage      Float?   // percentage 0-100
-  ramUsage          Float?   // percentage 0-100
-  uptimeSeconds     Int      @default(0)
-  lastHeartbeat     DateTime?
-  currentCampaignId String?
-  currentPlaylistId String?
-  contentSyncStatus String   @default("synced") // synced, syncing, pending, failed, offline
-  contentSyncedAt   DateTime?
-  contentVersion    String?
-  storageUsedMb     Int      @default(0)
-  installationDate  DateTime @default(now())
-  warranty          String?
-  lastServiceDate   DateTime?
-  simId             String?  @unique
+  engineerCode      String   @unique
+  name              String
+  password          String
+  role              String   @default("ENGINEER") // ADMIN, MANAGER, ENGINEER
+  phone             String?
+  status            String   @default("ACTIVE") // ACTIVE, INACTIVE
+  managerId         String?
+  mustChangePassword Boolean  @default(true)
+  // Extended profile fields used in Daily Schedule Report
+  smName            String?  // Senior Manager name (manager's manager)
+  zone              String?  // Territory zone, e.g. West, East, North, South
+  vertical          String?  // Business vertical, e.g. Retail, Enterprise
+  projectManager    String?  // Display name of project manager (fallback if managerId chain is missing)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  city              City?           @relation(fields: [cityId], references: [id])
-  vehicle           Vehicle?        @relation(fields: [vehicleId], references: [id])
-  sim               SimCard?        @relation(fields: [simId], references: [id])
-  heartbeats        DeviceHeartbeat[]
-  healths           DeviceHealth[]
-  commands          DeviceCommand[]
-  playbackEvents    PlaybackEvent[]
-  alerts            Alert[]
-  serviceTickets    ServiceTicket[]
-  campaignDevices   CampaignDevice[]
-  deviceGroupItems  DeviceGroupItem[]
-
-  @@index([status])
-  @@index([cityId])
-  @@index([vehicleId])
+  manager      User?    @relation("ManagerEngineers", fields: [managerId], references: [id])
+  engineers    User[]   @relation("ManagerEngineers")
+  schedules    Schedule[]
+  visits       Visit[]
+  imports      ImportHistory[]
+  exports      ExportHistory[]
+  activityLogs ActivityLog[]
+  notifications Notification[]
 }
 
-model SimCard {
-  id              String   @id @default(cuid())
-  iccid           String   @unique
-  imei            String?
-  operator        String   // jio, airtel, vi, bsnl
-  network         String?  // 4G, 3G
-  dataPlan        String?  // 1GB/day, 5GB/day
-  monthlyAllowanceMb Int   @default(1024)
-  currentUsageMb  Int      @default(0)
-  activationDate  DateTime @default(now())
-  renewalDate     DateTime?
-  status          String   @default("active") // active, suspended, expired, offline
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model Schedule {
+  id        String   @id @default(cuid())
+  date      String
+  engineerId String
+  siteId    String?
+  storeId   String?
+  vendor    String?
+  activity  String?
+  status    String   @default("ASSIGNED") // ASSIGNED, PENDING, COMPLETED, HOLD, CANCELLED, RESCHEDULED
+  remarks   String?
+  // Extended fields for Daily Schedule Report (matching reference Excel format)
+  vertical    String?  // Retail, Enterprise, etc.
+  callNumber  String?  // Ticket / call number (e.g. SD63358177)
+  visitType   String?  // Project, Service, Absent
+  problem     String?  // Description of the issue
+  callDate    String?  // When the call/ticket was logged (ISO date string)
+  zone        String?  // Override zone (defaults to engineer.zone when empty)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  device          Device?
-
-  @@index([operator])
-  @@index([status])
+  engineer  User     @relation(fields: [engineerId], references: [id])
+  site      Site?    @relation(fields: [siteId], references: [id])
+  store     Store?   @relation(fields: [storeId], references: [id])
+  visits    Visit[]
 }
 
-model DeviceHeartbeat {
+model Site {
   id             String   @id @default(cuid())
-  deviceId       String
-  timestamp      DateTime @default(now())
+  siteCode       String   @unique
+  siteName       String
+  address        String?
+  district       String?
+  region         String?
+  vendor         String?
   latitude       Float?
   longitude      Float?
-  signalStrength Int?
-  networkType    String?
-  temperature    Float?
-  storageUsage   Float?
-  ramUsage       Float?
-  uptimeSeconds  Int?
-  screenStatus   String?
-  appStatus      String?
-  currentCampaignId String?
+  googleLink     String?
+  lastUpdatedBy  String?
+  lastUpdatedAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  device         Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-
-  @@index([deviceId])
-  @@index([timestamp])
+  schedules Schedule[]
 }
 
-model DeviceHealth {
+model Store {
   id           String   @id @default(cuid())
-  deviceId     String
-  timestamp    DateTime @default(now())
-  online       Boolean
-  signalStrength Int?
-  gpsFix       Boolean  @default(false)
-  temperature  Float?
-  storageUsage Float?
-  ramUsage     Float?
-  uptimeSeconds Int?
-  networkType  String?
-  issues       String?  // JSON list of issue codes
-
-  device       Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-
-  @@index([deviceId])
-  @@index([timestamp])
-}
-
-model DeviceCommand {
-  id           String   @id @default(cuid())
-  deviceId     String
-  command      String   // restart, shutdown, sync, screenshot, update, brightness, volume, refresh, lock
-  payload      String?  // JSON params
-  status       String   @default("queued") // queued, sent, acknowledged, completed, failed
-  result       String?
-  issuedById   String?
+  storeCode    String   @unique
+  storeName    String
+  storeFormat  String?
+  address      String?
+  district     String?
+  region       String?
+  latitude     Float?
+  longitude    Float?
+  googleLink   String?
+  contactNumber String?
   createdAt    DateTime @default(now())
-  completedAt  DateTime?
+  updatedAt    DateTime @updatedAt
 
-  device       Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  issuedBy     User?    @relation(fields: [issuedById], references: [id])
-
-  @@index([deviceId])
-  @@index([status])
+  schedules Schedule[]
 }
 
-// ===================== MEDIA / PLAYLISTS =====================
+model Visit {
+  id           String   @id @default(cuid())
+  scheduleId   String
+  engineerId   String
+  visitNumber  Int      @default(1)
+  checkInTime  DateTime @default(now())
+  checkOutTime DateTime?
+  status       String   @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, CANCELLED
+  remarks      String?
+  gps          String?
+  photos       String   @default("[]") // JSON array of photo URLs
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-model Media {
-  id              String   @id @default(cuid())
-  name            String
-  fileName        String
-  fileUrl         String
-  thumbnailUrl    String?
-  type            String   // image, video
-  format          String?  // jpg, png, webp, mp4
-  sizeBytes       Int      @default(0)
-  resolution      String?
-  durationSec     Int      @default(0)
-  advertiserId    String?
-  organizationId  String?
-  uploadedById    String?
-  approvalStatus  String   @default("draft") // draft, pending_approval, approved, rejected, archived
-  rejectionReason String?
-  usageCount      Int      @default(0)
-  qrUrl           String?  // optional QR target URL
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  advertiser      Advertiser?   @relation(fields: [advertiserId], references: [id])
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  playlistItems   PlaylistItem[]
-  playbackEvents  PlaybackEvent[]
-  qrScans         QrScanEvent[]
-
-  @@index([advertiserId])
-  @@index([approvalStatus])
-  @@index([type])
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  engineer User     @relation(fields: [engineerId], references: [id])
 }
 
-model Playlist {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  city            String?
-  zone            String?
-  totalDuration   Int      @default(0)
-  priority        Int      @default(5)
-  status          String   @default("draft") // draft, active, archived
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model ImportHistory {
+  id           String   @id @default(cuid())
+  fileName     String
+  uploadedBy   String
+  totalRows    Int      @default(0)
+  successCount Int      @default(0)
+  failedCount  Int      @default(0)
+  report       String   @default("[]") // JSON array of failed rows
+  createdAt    DateTime @default(now())
 
-  items           PlaylistItem[]
-  campaigns       Campaign[]
-
-  @@index([status])
+  uploader User @relation(fields: [uploadedBy], references: [id])
 }
 
-model PlaylistItem {
-  id          String   @id @default(cuid())
-  playlistId  String
-  mediaId     String
-  order       Int      @default(0)
-  durationSec Int      @default(15)
-  frequency   Int      @default(1)
+model ExportHistory {
+  id         String   @id @default(cuid())
+  exportedBy String
+  format     String   // XLSX, CSV, PDF
+  filters    String   @default("{}") // JSON
+  recordCount Int     @default(0)
+  createdAt  DateTime @default(now())
 
-  playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
-  media       Media    @relation(fields: [mediaId], references: [id])
-
-  @@index([playlistId])
+  exporter User @relation(fields: [exportedBy], references: [id])
 }
 
-// ===================== CAMPAIGNS =====================
-
-model Campaign {
-  id              String   @id @default(cuid())
-  name            String
-  advertiserId    String
-  organizationId  String?
-  playlistId      String?
-  status          String   @default("draft") // draft, submitted, under_review, approved, rejected, payment_pending, scheduled, live, paused, completed, cancelled
-  rejectionReason String?
-  priority        Int      @default(4) // 1 emergency, 2 govt, 3 premium, 4 standard, 5 house
-  startDate       DateTime?
-  endDate         DateTime?
-  startTime       String?  // HH:mm
-  endTime         String?  // HH:mm
-  daysOfWeek      String?  // comma-separated 0-6
-  frequencyPerHour Int     @default(4)
-  budget          Float    @default(0)
-  priceQuoted     Float    @default(0)
-  amountPaid      Float    @default(0)
-  targetCities    String?  // comma-separated
-  targetZones     String?  // comma-separated
-  targetDeviceCount Int    @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  advertiser      Advertiser @relation(fields: [advertiserId], references: [id])
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  playlist        Playlist?  @relation(fields: [playlistId], references: [id])
-  devices         CampaignDevice[]
-  schedules       CampaignSchedule[]
-  playbackEvents  PlaybackEvent[]
-  invoices        Invoice[]
-  approvalHistory CampaignApprovalHistory[]
-  revenueTransactions RevenueTransaction[]
-
-  @@index([advertiserId])
-  @@index([status])
-}
-
-model CampaignDevice {
-  id          String   @id @default(cuid())
-  campaignId  String
-  deviceId    String
-  status      String   @default("selected") // selected, reserved, active, completed
-  createdAt   DateTime @default(now())
-
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  device      Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-
-  @@index([campaignId])
-  @@index([deviceId])
-}
-
-model CampaignSchedule {
-  id          String   @id @default(cuid())
-  campaignId  String
-  startDate   DateTime
-  endDate     DateTime
-  startTime   String
-  endTime     String
-  daysOfWeek  String?
-  createdAt   DateTime @default(now())
-
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  @@index([campaignId])
-}
-
-model CampaignApprovalHistory {
-  id          String   @id @default(cuid())
-  campaignId  String
-  action      String   // submitted, reviewed, approved, rejected, published, paused
-  byUserId    String?
-  note        String?
-  createdAt   DateTime @default(now())
-
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  @@index([campaignId])
-}
-
-// ===================== PLAYBACK / PROOF OF PLAY =====================
-
-model PlaybackEvent {
-  id                String   @id @default(cuid())
-  campaignId        String?
-  creativeId        String?  // media id
-  deviceId          String
-  vehicleId         String?
-  timestamp         DateTime @default(now())
-  scheduledPlay     Boolean  @default(true)
-  actualPlay        Boolean  @default(true)
-  durationSec       Int      @default(15)
-  completionPct     Float    @default(100)
-  status            String   @default("completed") // completed, partial, failed
-
-  campaign          Campaign? @relation(fields: [campaignId], references: [id])
-  media             Media?    @relation(fields: [creativeId], references: [id])
-  device            Device    @relation(fields: [deviceId], references: [id])
-  vehicle           Vehicle?  @relation(fields: [vehicleId], references: [id])
-
-  @@index([campaignId])
-  @@index([deviceId])
-  @@index([timestamp])
-  @@index([status])
-}
-
-// ===================== BILLING / REVENUE / EARNINGS =====================
-
-model Invoice {
-  id              String   @id @default(cuid())
-  invoiceNumber   String   @unique
-  campaignId      String?
-  advertiserId    String?
-  organizationId  String?
-  amount          Float
-  gst             Float    @default(0)
-  totalAmount     Float
-  status          String   @default("pending") // pending, paid, failed, refunded, partially_refunded
-  dueDate         DateTime?
-  paidAt          DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  campaign        Campaign?    @relation(fields: [campaignId], references: [id])
-  advertiser      Advertiser?  @relation(fields: [advertiserId], references: [id])
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  payments        Payment[]
-
-  @@index([advertiserId])
-  @@index([status])
-}
-
-model Payment {
-  id              String   @id @default(cuid())
-  invoiceId       String
-  amount          Float
-  method          String   @default("upi") // upi, bank_transfer, card, manual
-  provider        String?  // razorpay, manual (integration-ready)
-  providerRef     String?
-  status          String   @default("pending") // pending, success, failed, refunded
-  createdAt       DateTime @default(now())
-
-  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-
-  @@index([invoiceId])
-  @@index([status])
-}
-
-model RevenueTransaction {
-  id              String   @id @default(cuid())
-  campaignId      String?
-  grossRevenue    Float
-  platformShare    Float
-  ownerShare      Float
-  driverShare     Float
-  iotCost         Float    @default(0)
-  cloudCost       Float    @default(0)
-  paymentFee      Float    @default(0)
-  netRevenue      Float
-  city            String?
-  recordedAt      DateTime @default(now())
-  createdAt       DateTime @default(now())
-
-  campaign        Campaign? @relation(fields: [campaignId], references: [id])
-
-  @@index([campaignId])
-  @@index([recordedAt])
-}
-
-model EarningRule {
-  id              String   @id @default(cuid())
-  name            String
-  platformShare   Float    @default(60)  // percentage of ad allocation
-  ownerShare      Float    @default(15)
-  driverShare     Float    @default(25)
-  baseParticipation Float  @default(500)  // INR per month
-  uptimeBonus     Float    @default(200)
-  campaignBonus   Float    @default(100)
-  complianceBonus Float    @default(100)
-  servicePenalty  Float    @default(50)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-model DriverEarning {
-  id              String   @id @default(cuid())
-  driverId        String
-  month           String   // YYYY-MM
-  baseAmount      Float    @default(0)
-  revenueShare    Float    @default(0)
-  uptimeBonus     Float    @default(0)
-  campaignBonus   Float    @default(0)
-  complianceBonus Float    @default(0)
-  servicePenalty  Float    @default(0)
-  totalAmount     Float    @default(0)
-  activeDays      Int      @default(0)
-  screenUptimePct Float    @default(0)
-  status          String   @default("pending") // pending, approved, paid
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  driver          Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-
-  @@index([driverId])
-  @@index([month])
-  @@index([status])
-}
-
-model OwnerEarning {
-  id              String   @id @default(cuid())
-  ownerId         String
-  month           String
-  revenueShare    Float    @default(0)
-  totalAmount     Float    @default(0)
-  status          String   @default("pending")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  owner           VehicleOwner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-
-  @@index([ownerId])
-  @@index([month])
-}
-
-model Payout {
-  id              String   @id @default(cuid())
-  payoutRef       String   @unique
-  recipientType   String   // driver, owner
-  driverId        String?
-  ownerId         String?
-  month           String
-  amount          Float
-  method          String   @default("upi") // upi, bank_transfer, manual
-  status          String   @default("pending") // pending, under_review, approved, processing, paid, failed, reversed
-  processedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  driver          Driver?       @relation("DriverPayouts", fields: [driverId], references: [id])
-  owner           VehicleOwner? @relation("OwnerPayouts", fields: [ownerId], references: [id])
-
-  @@index([status])
-  @@index([driverId])
-  @@index([ownerId])
-}
-
-// ===================== SERVICE MANAGEMENT =====================
-
-model FieldEngineer {
+model ActivityLog {
   id            String   @id @default(cuid())
-  name          String
-  mobile        String
-  email         String?
-  city          String?
-  specialization String?
-  status        String   @default("active")
+  userId        String
+  role          String
+  action        String
+  entity        String?
+  entityId      String?
+  ipAddress     String?
+  device        String?
+  previousValue String?
+  newValue      String?
   createdAt     DateTime @default(now())
 
-  serviceTickets ServiceTicket[]
-}
-
-model ServiceTicket {
-  id              String   @id @default(cuid())
-  ticketId        String   @unique
-  deviceId        String?
-  vehicleId       String?
-  driverId        String?
-  problem         String
-  category        String?  // hardware, software, network, screen, power
-  priority        String   @default("medium") // low, medium, high, critical
-  assignedEngineerId String?
-  status          String   @default("open") // open, assigned, in_progress, resolved, closed
-  slaDueAt        DateTime?
-  resolution      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  resolvedAt      DateTime?
-
-  device          Device?        @relation(fields: [deviceId], references: [id])
-  vehicle         Vehicle?       @relation(fields: [vehicleId], references: [id])
-  driver          Driver?        @relation(fields: [driverId], references: [id])
-  assignedEngineer FieldEngineer? @relation(fields: [assignedEngineerId], references: [id])
-  comments        ServiceComment[]
-
-  @@index([status])
-  @@index([assignedEngineerId])
-  @@index([priority])
-}
-
-model ServiceComment {
-  id          String   @id @default(cuid())
-  ticketId    String
-  authorId    String?
-  authorName  String
-  note        String
-  photoUrl    String?
-  createdAt   DateTime @default(now())
-
-  ticket      ServiceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
-  @@index([ticketId])
-}
-
-// ===================== ALERTS / NOTIFICATIONS / AUDIT =====================
-
-model Alert {
-  id          String   @id @default(cuid())
-  deviceId    String?
-  type        String   // device_offline, high_temperature, low_storage, sim_data_warning, playback_failure
-  severity    String   @default("warning") // info, warning, critical
-  message     String
-  acknowledged Boolean @default(false)
-  createdAt   DateTime @default(now())
-
-  device      Device?  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-
-  @@index([severity])
-  @@index([acknowledged])
+  user User @relation(fields: [userId], references: [id])
 }
 
 model Notification {
-  id          String   @id @default(cuid())
-  userId      String
-  title       String
-  message     String
-  type        String   @default("info")
-  read        Boolean  @default(false)
-  createdAt   DateTime @default(now())
-
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([read])
-}
-
-model AuditLog {
-  id          String   @id @default(cuid())
-  userId      String?
-  action      String   // login, logout, campaign_approve, device_restart, etc
-  entity      String?
-  entityId    String?
-  details     String?
-  ipAddress   String?
-  createdAt   DateTime @default(now())
-
-  user        User?    @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([action])
-  @@index([createdAt])
-}
-
-// ===================== SETTINGS =====================
-
-model Setting {
   id        String   @id @default(cuid())
-  key       String   @unique
-  value     String
-  category  String   @default("general") // general, campaign, device, revenue, notifications, security
-  updatedAt DateTime @updatedAt
-}
+  userId    String?
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 
-// ===================== EMERGENCY CONTENT =====================
-
-model EmergencyContent {
-  id            String   @id @default(cuid())
-  title         String
-  message       String
-  priority      Int      @default(1) // 1 emergency, 2 govt, 3 premium, 4 standard, 5 house
-  mediaUrl      String?  // optional media to display
-  targetScope   String   @default("all") // all, city, zone, device_group, device
-  targetCity    String?
-  targetZone    String?
-  targetDeviceId String?
-  durationMin   Int      @default(30) // how long to override normal playlist
-  status        String   @default("active") // active, expired, cancelled
-  createdBy     String?
-  createdAt     DateTime @default(now())
-  expiresAt     DateTime
-  pushedAt      DateTime?
-
-  @@index([status])
-  @@index([priority])
-}
-
-// ===================== QR SCAN ANALYTICS =====================
-
-model QrScanEvent {
-  id          String   @id @default(cuid())
-  mediaId     String?
-  campaignId  String?
-  url         String
-  deviceId    String?
-  timestamp   DateTime @default(now())
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
-
-  media       Media?   @relation(fields: [mediaId], references: [id], onDelete: SetNull)
-
-  @@index([mediaId])
-  @@index([campaignId])
-  @@index([timestamp])
-}
-
-// ===================== DEVICE GROUPS =====================
-
-model DeviceGroup {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  city        String?
-  zone        String?
-  color       String   @default("primary")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  items       DeviceGroupItem[]
-
-  @@index([city])
-}
-
-model DeviceGroupItem {
-  id          String   @id @default(cuid())
-  groupId     String
-  deviceId    String
-  addedAt     DateTime @default(now())
-
-  group       DeviceGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  device      Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-
-  @@unique([groupId, deviceId])
-  @@index([groupId])
-  @@index([deviceId])
+  user User? @relation(fields: [userId], references: [id])
 }
