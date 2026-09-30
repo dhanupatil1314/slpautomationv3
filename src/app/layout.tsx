@@ -1,48 +1,26 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { Providers } from "@/components/providers";
+import { Toaster } from "sonner";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "LakhirAd CMS — Smart Digital Advertising Network",
-  description:
-    "LakhirAd CMS — Enterprise platform for managing IoT-connected Digital Out-of-Home (DOOH) advertising networks. Auto-rickshaw screens, taxis, buses, shops, malls and outdoor digital signage.",
-  keywords: [
-    "LakhirAd",
-    "DOOH",
-    "Digital Signage",
-    "Advertising Network",
-    "IoT",
-    "CMS",
-  ],
-  authors: [{ name: "LakhirAd" }],
-  icons: {
-    icon: "/favicon.svg",
-  },
+  title: "FEMS - Field Engineer Schedule Management",
+  description: "Centralized field engineer schedule management system",
+  icons: { icon: "/logo.svg" },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} antialiased bg-background text-foreground`}
-      >
-        <ThemeProvider>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
+        <Providers>
           {children}
-          <Toaster />
-          <SonnerToaster position="top-right" richColors />
-        </ThemeProvider>
+          <Toaster position="top-right" richColors closeButton />
+        </Providers>
       </body>
     </html>
   );

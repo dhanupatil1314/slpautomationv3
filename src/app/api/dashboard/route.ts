@@ -1,131 +1,115 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { auth } from '@/lib/api'
+import { format, subDays, startOfWeek, endOfWeek } from 'date-fns'
 
-// GET /api/dashboard — executive KPIs, charts, and activity feed
-export async function GET() {
-  const user = await getCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+const safeEngineer = { id: true, engineerCode: true, name: true, role: true, phone: true, status: true, managerId: true }
+const safeSite = { id: true, siteCode: true, siteName: true, address: true, district: true, region: true, vendor: true, latitude: true, longitude: true, googleLink: true }
+const safeStore = { id: true, storeCode: true, storeName: true, address: true, district: true, region: true, latitude: true, longitude: true, googleLink: true, contactNumber: true }
 
-  const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const last7Days = new Date(now.getTime() - 7 * 86400000)
+export async function GET(req: NextRequest) {
+  const result = await auth(req)
+  if (result instanceof NextResponse) return result
+  const { user } = result
 
-  const [deviceStatuses, activeCampaigns, activeAdvertisers, activeVehicles, activeDrivers,
-    todayPlays, monthRevenue, pendingPayouts, openTickets] = await Promise.all([
-    db.device.groupBy({ by: ['status'], _count: true }),
-    db.campaign.count({ where: { status: 'live' } }),
-    db.advertiser.count({ where: { status: 'active' } }),
-    db.vehicle.count({ where: { status: 'active' } }),
-    db.driver.count({ where: { status: 'active' } }),
-    db.playbackEvent.count({ where: { timestamp: { gte: todayStart } } }),
-    db.payment.aggregate({ where: { status: 'success', createdAt: { gte: monthStart } }, _sum: { amount: true } }),
-    db.payout.count({ where: { status: { in: ['pending', 'under_review'] } } }),
-    db.serviceTicket.count({ where: { status: { in: ['open', 'assigned', 'in_progress'] } } }),
-  ])
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+  const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
-  const statusMap: Record<string, number> = {}
-  deviceStatuses.forEach((s) => (statusMap[s.status] = s._count))
-  const totalDevices = Object.values(statusMap).reduce((a, b) => a + b, 0)
-  const onlineDevices = statusMap['online'] || 0
-  const warningDevices = statusMap['warning'] || 0
-  const offlineCount = statusMap['offline'] || 0
+  try {
+    if (user.role === 'ADMIN') {
+      const [totalEngineers, totalManagers, totalSites, totalStores, todaySchedules, allSchedules] = await Promise.all([
+        db.user.count({ where: { role: 'ENGINEER', status: 'ACTIVE' } }),
+        db.user.count({ where: { role: 'MANAGER', status: 'ACTIVE' } }),
+        db.site.count(),
+        db.store.count(),
+        db.schedule.findMany({ where: { date: today }, include: { engineer: { select: safeEngineer }, site: { select: safeSite }, store: { select: safeStore } } }),
+        db.schedule.findMany({ include: { engineer: { select: safeEngineer }, site: { select: safeSite }, store: { select: safeStore } }, take: 500, orderBy: { date: 'desc' } }),
+      ])
 
-  // Revenue chart — last 6 months
-  const revenueByMonth: { month: string; revenue: number }[] = []
-  for (let i = 5; i >= 0; i--) {
-    const mStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-    const rev = await db.payment.aggregate({
-      where: { status: 'success', createdAt: { gte: mStart, lt: mEnd } },
-      _sum: { amount: true },
+      const completed = todaySchedules.filter(s => s.status === 'COMPLETED').length
+      const pending = todaySchedules.filter(s => s.status === 'PENDING').length
+      const hold = todaySchedules.filter(s => s.status === 'HOLD').length
+      const cancelled = todaySchedules.filter(s => s.status === 'CANCELLED').length
+
+      const weekSchedules = allSchedules.filter(s => s.date >= weekStart && s.date <= weekEnd)
+      const weekByDate = new Map<string, { completed: number; total: number }>()
+      for (const s of weekSchedules) {
+        const d = s.date
+        const entry = weekByDate.get(d) || { completed: 0, total: 0 }
+        entry.total++
+        if (s.status === 'COMPLETED') entry.completed++
+        weekByDate.set(d, entry)
+      }
+      const dailyCompletion = Array.from(weekByDate.entries()).map(([date, data]) => ({ date, ...data }))
+
+      const engPerformance = await db.user.findMany({
+        where: { role: 'ENGINEER', status: 'ACTIVE' },
+        include: { _count: { select: { schedules: { where: { status: 'COMPLETED' } } } } },
+      })
+      const engineerPerformance = engPerformance.map(e => ({
+        name: e.name, code: e.engineerCode,
+        completed: e._count.schedules,
+      }))
+
+      const districtStats: Record<string, { total: number; completed: number }> = {}
+      for (const s of allSchedules) {
+        const d = s.site?.district || 'Unknown'
+        if (!districtStats[d]) districtStats[d] = { total: 0, completed: 0 }
+        districtStats[d].total++
+        if (s.status === 'COMPLETED') districtStats[d].completed++
+      }
+      const districtPerformance = Object.entries(districtStats).map(([district, data]) => ({ district, ...data }))
+
+      const recentImports = await db.importHistory.findMany({ take: 5, orderBy: { createdAt: 'desc' }, include: { uploader: { select: { name: true } } } })
+
+      return NextResponse.json({
+        cards: { totalEngineers, totalManagers, totalSites, totalStores, today: { total: todaySchedules.length, completed, pending, hold, cancelled } },
+        charts: { dailyCompletion, engineerPerformance, districtPerformance },
+        recentImports,
+      })
+    }
+
+    if (user.role === 'MANAGER') {
+      const engineers = await db.user.findMany({ where: { managerId: user.userId, role: 'ENGINEER', status: 'ACTIVE' } })
+      const engineerIds = engineers.map(e => e.id)
+
+      const [todaySchedules, weekSchedules, totalStores, totalSites] = await Promise.all([
+        db.schedule.findMany({ where: { date: today, engineerId: { in: engineerIds } }, include: { engineer: { select: safeEngineer }, site: { select: safeSite }, store: { select: safeStore } } }),
+        db.schedule.findMany({ where: { date: { gte: weekStart, lte: weekEnd }, engineerId: { in: engineerIds } }, include: { engineer: { select: safeEngineer }, site: { select: safeSite } } }),
+        db.store.count(),
+        db.site.count(),
+      ])
+
+      const completed = todaySchedules.filter(s => s.status === 'COMPLETED').length
+      const pending = todaySchedules.filter(s => s.status === 'PENDING' || s.status === 'ASSIGNED').length
+      const activeEngineers = engineers.length
+
+      return NextResponse.json({
+        cards: { assignedEngineers: engineers.length, todayJobs: todaySchedules.length, completed, pending, activeEngineers, totalStores, totalSites },
+        engineers: engineers.map(e => ({ id: e.id, name: e.name, code: e.engineerCode })),
+        todaySchedules,
+      })
+    }
+
+    // ENGINEER
+    const [todaySchedules, allVisits, pendingSites, completedSites] = await Promise.all([
+      db.schedule.findMany({ where: { date: today, engineerId: user.userId }, include: { site: { select: safeSite }, store: { select: safeStore } } }),
+      db.visit.count({ where: { engineerId: user.userId } }),
+      db.schedule.count({ where: { date: today, engineerId: user.userId, status: { in: ['PENDING', 'ASSIGNED', 'HOLD', 'RESCHEDULED'] } } }),
+      db.schedule.count({ where: { date: today, engineerId: user.userId, status: 'COMPLETED' } }),
+    ])
+
+    const nearestSite = todaySchedules.find(s => s.status !== 'COMPLETED')?.site
+    const nearestStore = todaySchedules.find(s => s.status !== 'COMPLETED')?.store
+
+    return NextResponse.json({
+      cards: { todaySchedule: todaySchedules.length, pendingSites, completedSites, totalVisits: allVisits },
+      nearestSite, nearestStore, todaySchedules,
     })
-    revenueByMonth.push({
-      month: mStart.toLocaleDateString('en-IN', { month: 'short' }),
-      revenue: rev._sum.amount || 0,
-    })
+  } catch (error) {
+    console.error('Dashboard error:', error)
+    return NextResponse.json({ error: 'Failed to load dashboard' }, { status: 500 })
   }
-
-  // Campaign performance — top 5 by playback
-  const topCampaignsRaw = await db.playbackEvent.groupBy({
-    by: ['campaignId'],
-    where: { timestamp: { gte: last7Days }, status: 'completed' },
-    _count: true,
-    orderBy: { _count: { campaignId: 'desc' } },
-    take: 5,
-  })
-  const campaignIds = topCampaignsRaw.map((c) => c.campaignId).filter(Boolean) as string[]
-  const campaigns = await db.campaign.findMany({ where: { id: { in: campaignIds } }, select: { id: true, name: true } })
-  const campaignMap = new Map(campaigns.map((c) => [c.id, c.name]))
-  const topCampaigns = topCampaignsRaw.map((c) => ({
-    name: campaignMap.get(c.campaignId || '') || 'Unknown',
-    plays: c._count,
-  }))
-
-  // Ad playback — hourly today
-  const hourlyPlays: { hour: string; plays: number }[] = []
-  for (let h = 0; h < 24; h += 2) {
-    const hStart = new Date(todayStart.getTime() + h * 3600000)
-    const hEnd = new Date(todayStart.getTime() + (h + 2) * 3600000)
-    const count = await db.playbackEvent.count({
-      where: { timestamp: { gte: hStart, lt: hEnd > now ? now : hEnd } },
-    })
-    hourlyPlays.push({ hour: `${String(h).padStart(2, '0')}:00`, plays: count })
-  }
-
-  // Offline device list (recent)
-  const offlineList = await db.device.findMany({
-    where: { status: { in: ['offline', 'warning'] } },
-    take: 8,
-    orderBy: { lastHeartbeat: 'desc' },
-    include: { city: true, vehicle: true },
-  })
-
-  // Critical alerts
-  const criticalAlerts = await db.alert.findMany({
-    where: { severity: 'critical', acknowledged: false },
-    take: 6,
-    orderBy: { createdAt: 'desc' },
-    include: { device: { select: { deviceId: true } } },
-  })
-
-  // Recent activity (audit logs)
-  const recentActivity = await db.auditLog.findMany({
-    take: 8,
-    orderBy: { createdAt: 'desc' },
-    include: { user: { select: { name: true, role: true } } },
-  })
-
-  // City-wise device distribution for map
-  const cityDevices = await db.device.findMany({
-    where: { status: { in: ['online', 'offline', 'warning'] } },
-    select: { id: true, deviceId: true, latitude: true, longitude: true, status: true, cityId: true, lastHeartbeat: true, signalStrength: true, city: { select: { name: true } } },
-  })
-
-  return NextResponse.json({
-    kpis: {
-      totalDevices, onlineDevices, offlineDevices: offlineCount, warningDevices,
-      activeCampaigns, activeAdvertisers, activeVehicles, activeDrivers, todayPlays,
-      monthlyRevenue: monthRevenue._sum.amount || 0, pendingPayouts, openServiceTickets: openTickets,
-    },
-    deviceStatus: {
-      online: onlineDevices, offline: offlineCount, warning: warningDevices,
-      maintenance: statusMap['maintenance'] || 0, suspended: statusMap['suspended'] || 0,
-    },
-    revenueByMonth, topCampaigns, hourlyPlays,
-    offlineList: offlineList.map((d) => ({
-      id: d.id, deviceId: d.deviceId, status: d.status, city: d.city?.name || '—',
-      lastHeartbeat: d.lastHeartbeat, vehicleReg: d.vehicle?.registrationNo || '—', signal: d.signalStrength,
-    })),
-    criticalAlerts: criticalAlerts.map((a) => ({
-      id: a.id, type: a.type, message: a.message, severity: a.severity,
-      deviceId: a.device?.deviceId, createdAt: a.createdAt,
-    })),
-    recentActivity: recentActivity.map((l) => ({
-      id: l.id, action: l.action, entity: l.entity, details: l.details,
-      user: l.user?.name || 'System', role: l.user?.role, createdAt: l.createdAt,
-    })),
-    mapDevices: cityDevices,
-  })
 }
