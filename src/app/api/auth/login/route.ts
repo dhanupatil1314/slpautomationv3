@@ -1,41 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { verifyPassword, generateAccessToken, generateRefreshToken } from '@/lib/auth'
-import { hashSync } from 'bcryptjs'
+import { verifyPassword, createSession, setSessionCookie } from '@/lib/auth'
+import { auditLog } from '@/lib/audit'
 
-const DEFAULT_PASSWORD = 'slp@1234'
-
-export async function POST(req: NextRequest) {
+// POST /api/auth/login — email/password authentication
+export async function POST(request: NextRequest) {
   try {
-    const { engineerCode, password } = await req.json()
-    if (!engineerCode || !password) {
-      return NextResponse.json({ error: 'Engineer code and password are required' }, { status: 400 })
+    const { email, password } = await request.json()
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    const user = await db.user.findUnique({ where: { engineerCode } })
-    if (!user || user.status !== 'ACTIVE') {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-    }
-
-    const valid = await verifyPassword(password, user.password)
-    if (!valid) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-    }
-
-    const token = await generateAccessToken({ userId: user.id, engineerCode: user.engineerCode, name: user.name, role: user.role as any, managerId: user.managerId })
-    const refreshToken = await generateRefreshToken({ userId: user.id })
-
-    await db.activityLog.create({
-      data: { userId: user.id, role: user.role, action: 'LOGIN', entity: 'User', entityId: user.id, ipAddress: req.headers.get('x-forwarded-for') || '', device: req.headers.get('user-agent')?.substring(0, 200) || '' },
+    const user = await db.user.findUnique({
+      where: { email: email.toLowerCase().trim(), deletedAt: null },
     })
+
+    if (!user) {
+      await auditLog({ action: 'login_failed', entity: 'user', details: `email=${email}` })
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    }
+
+    if (user.status !== 'active') {
+      return NextResponse.json({ error: 'Account is suspended. Contact administrator.' }, { status: 403 })
+    }
+
+    const valid = await verifyPassword(password, user.passwordHash)
+    if (!valid) {
+      await auditLog({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, action: 'login_failed' })
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    }
+
+    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
+    await db.loginActivity.create({ data: { userId: user.id, ip, userAgent: request.headers.get('user-agent'), success: true } })
+    await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), lastLoginIp: ip } })
+
+    const token = await createSession(user.id)
+    await setSessionCookie(token)
+    await auditLog({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, action: 'login', ipAddress: ip })
 
     return NextResponse.json({
-      token, refreshToken,
-      mustChangePassword: user.mustChangePassword,
-      user: { id: user.id, engineerCode: user.engineerCode, name: user.name, role: user.role, phone: user.phone, status: user.status, managerId: user.managerId },
+      user: {
+        id: user.id, email: user.email, name: user.name, role: user.role,
+        organizationId: user.organizationId, avatarUrl: user.avatarUrl,
+      },
     })
-  } catch (error) {
-    console.error('Login error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch (e) {
+    console.error('Login error:', e)
+    return NextResponse.json({ error: 'Login failed. Please try again.' }, { status: 500 })
   }
 }

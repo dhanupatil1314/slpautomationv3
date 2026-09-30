@@ -1,26 +1,48 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/providers";
-import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
-  title: "FEMS - Field Engineer Schedule Management",
-  description: "Centralized field engineer schedule management system",
-  icons: { icon: "/logo.svg" },
+  title: "LakhirAd CMS — Smart Digital Advertising Network",
+  description:
+    "LakhirAd CMS — Enterprise platform for managing IoT-connected Digital Out-of-Home (DOOH) advertising networks. Auto-rickshaw screens, taxis, buses, shops, malls and outdoor digital signage.",
+  keywords: [
+    "LakhirAd",
+    "DOOH",
+    "Digital Signage",
+    "Advertising Network",
+    "IoT",
+    "CMS",
+  ],
+  authors: [{ name: "LakhirAd" }],
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
-        <Providers>
+      <body
+        className={`${geistSans.variable} antialiased bg-background text-foreground`}
+      >
+        <ThemeProvider>
           {children}
-          <Toaster position="top-right" richColors closeButton />
-        </Providers>
+          <Toaster />
+          <SonnerToaster position="top-right" richColors />
+        </ThemeProvider>
       </body>
     </html>
   );
